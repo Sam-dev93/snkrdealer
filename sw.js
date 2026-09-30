@@ -1,0 +1,81 @@
+/*
+ * Snkr Dealer — service worker
+ *
+ * Updating the app:
+ *   • index.html is always fetched from the network first, so any change you
+ *     upload shows the next time the app is opened (cache is only the offline fallback).
+ *   • The page re-checks this file when the app is opened or brought back to the
+ *     front. Bump VERSION below whenever you deploy — the new worker installs and the
+ *     page switches over quietly the next time the app goes to the background.
+ *   • Sheet data (Apps Script) is never cached — the app keeps its own copy for offline.
+ */
+const VERSION = '2026.09.30-1';
+const CACHE = `snkrdealer-${VERSION}`;
+const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './logo.png'];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE).then((cache) =>
+      // One missing file (e.g. an icon) shouldn't stop the install
+      Promise.allSettled(SHELL.map((url) => cache.add(new Request(url, { cache: 'reload' }))))
+    )
+  );
+  self.skipWaiting();
+});
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    // Wipe every older cache
+    await Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k)));
+    await self.clients.claim();
+    // No forced reload of open windows here: reloading an iPhone Home Screen app while it is
+    // launching can leave it not responding to taps. The page applies the update itself the
+    // next time the app goes to the background.
+  })());
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+});
+
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET') return;
+  const url = new URL(req.url);
+
+  // Apps Script API and anything else external → straight to the network, never cached
+  if (url.origin !== self.location.origin) return;
+  if (url.pathname.endsWith('/sw.js')) return;     // never serve the worker from cache
+
+  const isPage = req.mode === 'navigate' || url.pathname.endsWith('/') || url.pathname.endsWith('.html');
+
+  if (isPage) {
+    // Network first: always the latest HTML when online, cached copy when offline
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' });
+        if (fresh && fresh.ok && !url.search) {
+          const cache = await caches.open(CACHE);
+          cache.put('./index.html', fresh.clone());
+        }
+        return fresh;
+      } catch (e) {
+        return (await caches.match('./index.html')) || (await caches.match('./')) ||
+          new Response('<h1 style="font-family:system-ui;color:#F2F2F5;background:#000000">Offline</h1>', { headers: { 'Content-Type': 'text/html' } });
+      }
+    })());
+    return;
+  }
+
+  // Everything else (icons, manifest): serve cached, refresh in the background
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    const cached = await cache.match(req);
+    const network = fetch(req).then((res) => {
+      if (res && res.ok) cache.put(req, res.clone());
+      return res;
+    }).catch(() => null);
+    return cached || (await network) || new Response('', { status: 504 });
+  })());
+});
