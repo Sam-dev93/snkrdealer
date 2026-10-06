@@ -430,6 +430,7 @@ body.setup #setup { display: block; }
     <div class="nav"><div class="ctitle">Stock</div><div class="icons">
       <button class="tb press searchBtn" onclick="toggleSearch('stock')" aria-label="Search stock"></button>
       <button class="tb press filterBtn stockFilter" onclick="toggleMenu('stockMenu', this)" aria-label="Filter stock"></button>
+      <button class="tb press dlBtn" onclick="openStockPdf()" aria-label="Download stock PDF"></button>
       <button class="tb press addBtn" onclick="openAction('addStock')" aria-label="Add stock"></button></div></div>
     <div class="menu" id="stockMenu" role="menu"></div>
     <div class="scroll"><div class="page">
@@ -437,6 +438,7 @@ body.setup #setup { display: block; }
       <div class="toolbar"><span></span><div class="icons">
         <button class="tb press searchBtn" onclick="toggleSearch('stock')" aria-label="Search stock"></button>
         <button class="tb press filterBtn stockFilter" onclick="toggleMenu('stockMenu', this)" aria-label="Filter stock"></button>
+        <button class="tb press dlBtn" onclick="openStockPdf()" aria-label="Download stock PDF"></button>
         <button class="tb press addBtn" onclick="openAction('addStock')" aria-label="Add stock"></button></div></div>
       <label class="search" id="stockSearch"><span class="sIco"></span><input type="search" placeholder="Trainer or colour — e.g. mocha, jordan 4" oninput="stockQuery=this.value;renderStock()" autocomplete="off"><button onclick="toggleSearch('stock')" aria-label="Clear search" class="xBtn"></button></label>
       <div class="chips" role="group" aria-label="Filter by size" id="sizeChips"></div>
@@ -534,7 +536,7 @@ body.setup #setup { display: block; }
    Snkr Dealer — the Google Sheet is the source of truth.
    Reads & writes go through the Apps Script web app (Api.gs).
    ===================================================================== */
-const APP_VERSION = '2026.09.30-1';
+const APP_VERSION = '2026.10.06-1';
 const SHEET_URL = 'https://docs.google.com/spreadsheets/d/1bds2CRFU02RUsWtw41DHGNK6y3O9dafKdOnHWG2qF0o/edit';
 const API_URL = 'https://script.google.com/macros/s/AKfycbyMwwTJTmc9LlxeLObkDn8vWkMND4cot1xir8QslU6o5kYk1gcEQzAd-DLvZJwfkVshUA/exec';
 const CFG_KEY = 'snkr-api';
@@ -576,7 +578,8 @@ const ICON = {
   star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.2 4.1 1 5.8L12 16.9l-5.3 2.7 1-5.8-4.2-4.1 5.9-.9z"/>',
   shoe: '<path d="M2.5 16.5v-5.2c0-.6.5-1.1 1.1-1.1 2.2 0 3.9-1.1 5-3.2l.6-1.1 2.6 1.6-.9 1.6 2.4 1.5.9-1.4 2 1.3-1 1.3c1.9.8 4.6 1.3 6.1 2.4.7.5 1.2 1.3 1.2 2.3z"/><path d="M2.5 16.5h19.5v1.8a1 1 0 0 1-1 1H3.5a1 1 0 0 1-1-1z"/>',
   tag: '<path d="M3 12.2V4a1 1 0 0 1 1-1h8.2l8.6 8.6a1.5 1.5 0 0 1 0 2.1l-7.1 7.1a1.5 1.5 0 0 1-2.1 0z"/><circle cx="7.8" cy="7.8" r="1.4"/>',
-  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>'
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  download: '<path d="M12 4v11M7 11l5 5 5-5"/><path d="M5 20h14"/>'
 };
 function ic(name, size = 20, w = 2) {
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${w}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[name] || ''}</svg>`;
@@ -584,7 +587,7 @@ function ic(name, size = 20, w = 2) {
 function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
 // static icons in the markup
 document.querySelectorAll('.ti').forEach((el) => { el.outerHTML = ic(el.dataset.i, +(el.dataset.s || 23), 2); });
-[['refreshBtn', 'refresh'], ['gearBtn', 'gear'], ['searchBtn', 'search'], ['filterBtn', 'filter'], ['addBtn', 'plus'], ['sIco', 'search'], ['xBtn', 'xcircle']].forEach(([c, i]) =>
+[['refreshBtn', 'refresh'], ['gearBtn', 'gear'], ['searchBtn', 'search'], ['filterBtn', 'filter'], ['addBtn', 'plus'], ['dlBtn', 'download'], ['sIco', 'search'], ['xBtn', 'xcircle']].forEach(([c, i]) =>
   document.querySelectorAll('.' + c).forEach((el) => { el.innerHTML = ic(i, c === 'sIco' || c === 'xBtn' ? 20 : 22); }));
 
 /* ---------- formatting ---------- */
@@ -817,7 +820,7 @@ function renderStock() {
   $('stockBody').innerHTML = `
     ${filtered ? `<div class="day"><span>${plural(ms.length, 'trainer')}${stockSize !== '' ? ' in UK ' + esc(stockSize) : ''}</span><span>${pairs} pairs · ${money(val)}</span></div>` : ''}
     <div class="list">${ms.length ? ms.map((m) => modelRow(m, stockSize)).join('') : `<div class="empty">Nothing matches${filtered ? `<br><button class="link" style="margin-top:8px;color:var(--acc);font-weight:700" onclick="clearStockFilters()">Clear filters</button>` : ''}</div>`}</div>
-    <button class="btn tint press" onclick="openAction('addStock')">${ic('plus', 18, 2.4)}Add stock</button>`;
+    <div class="btnrow"><button class="btn tint press" onclick="openStockPdf()">${ic('download', 18, 2.4)}Stock PDF</button><button class="btn tint press" onclick="openAction('addStock')">${ic('plus', 18, 2.4)}Add stock</button></div>`;
 }
 
 /* ---------- Sales ---------- */
@@ -1494,6 +1497,88 @@ async function deleteExpense(row) {
   const r = await confirmBox({ title: 'Delete this expense?', text: `${esc(e.desc)} · ${money(e.amount)}` });
   if (!r.ok) return;
   try { toast(await send('deleteExpense', { row: e.row, match: e.desc })); closeSheet(); } catch (err) { toast(err.message); }
+}
+
+/* ---------- Stock PDF ---------- */
+let pdfLibs = null;
+function loadScript(src) {
+  return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('Couldn’t load the PDF tools — check your connection')); document.head.appendChild(el); });
+}
+function loadPdfLibs() {
+  if (!pdfLibs) pdfLibs = loadScript('./jspdf.umd.min.js').then(() => loadScript('./jspdf.autotable.min.js')).catch((e) => { pdfLibs = null; throw e; });
+  return pdfLibs;
+}
+let pdfLogo = null;
+function loadPdfLogo() {
+  if (pdfLogo) return pdfLogo;
+  pdfLogo = fetch('./logo.png').then((r) => r.blob()).then((b) => new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => res(null); fr.readAsDataURL(b); })).catch(() => null);
+  return pdfLogo;
+}
+function openStockPdf() {
+  if (!needData()) return;
+  if (!D.stock.length) { toast('No stock to download'); return; }
+  loadPdfLibs().catch(() => {}); loadPdfLogo();
+  openForm({
+    title: 'Download stock', icon: 'download', color: 'acc', btn: 'Download PDF', sub: `${M.pairs} pairs · ${plural(M.lines, 'line')}`,
+    fields: [
+      { id: 'prices', label: 'Prices', type: 'pills', options: [{ v: 'no', l: 'Without prices' }, { v: 'yes', l: 'With prices' }], full: true, val: 'no',
+        hint: (v) => v.prices === 'yes' ? 'Shows what each pair <b>cost you</b> and the total stock value.' : 'Trainer, colour, category, size and quantity only.' }
+    ],
+    submit: async (v) => { await loadPdfLibs(); const logo = await loadPdfLogo(); return saveStockPdf(v.prices === 'yes', logo); }
+  });
+}
+function buildStockPdf(withPrices, logo) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' });
+  const now = new Date(), W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight(), mx = 12;
+  const dateStr = `${now.getDate()} ${MON_LONG[now.getMonth()]} ${now.getFullYear()}`;
+  const gbp = (n) => '£' + (+n || 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  let tx = mx;
+  if (logo) { try { doc.addImage(logo, 'PNG', mx, 10, 16, 16); tx = mx + 20; } catch (e) {} }
+  doc.setFont('helvetica', 'bold'); doc.setFontSize(18); doc.setTextColor(17, 17, 20);
+  doc.text('Snkr Dealer Current Stock', tx, 17.5);
+  doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(110, 110, 118);
+  doc.text(dateStr, tx, 24);
+  const lines = D.stock.slice().sort((a, b) => a.trainer.localeCompare(b.trainer) || a.colour.localeCompare(b.colour) || a.cat.localeCompare(b.cat) || a.size - b.size || a.cost - b.cost);
+  const pairs = lines.reduce((t, p) => t + p.qty, 0), value = lines.reduce((t, p) => t + p.qty * p.cost, 0);
+  doc.setFontSize(10);
+  doc.text(`${pairs} pairs · ${models().length} trainers${withPrices ? ' · ' + gbp(value) + ' at cost' : ''}`, W - mx, 24, { align: 'right' });
+  const head = ['Trainer', 'Colour', 'Category', 'Size (UK)', 'Qty'].concat(withPrices ? ['Cost', 'Value'] : []);
+  const body = lines.map((p) => [p.trainer, p.colour + (p.notes ? '  (' + p.notes + ')' : ''), catS(p.cat), String(p.size), String(p.qty)].concat(withPrices ? [gbp(p.cost), gbp(p.qty * p.cost)] : []));
+  const foot = [[{ content: 'Total', colSpan: 4 }, String(pairs)].concat(withPrices ? ['', gbp(value)] : [])];
+  const cs = { 2: { cellWidth: 20 }, 3: { halign: 'center', cellWidth: 20, fontStyle: 'bold' }, 4: { halign: 'center', cellWidth: 13 } };
+  if (withPrices) { cs[0] = { cellWidth: 34 }; cs[5] = { halign: 'right', cellWidth: 22 }; cs[6] = { halign: 'right', cellWidth: 24 }; } else cs[0] = { cellWidth: 44 };
+  doc.autoTable({
+    head: [head], body, foot, startY: 31, margin: { left: mx, right: mx, top: 14, bottom: 14 }, showFoot: 'lastPage', rowPageBreak: 'avoid',
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: { top: 1.7, bottom: 1.7, left: 2.2, right: 2.2 }, textColor: [17, 17, 20], lineColor: [226, 226, 232], lineWidth: 0.1, overflow: 'linebreak' },
+    headStyles: { fillColor: [26, 70, 85], textColor: 255, fontStyle: 'bold', lineWidth: 0 },
+    footStyles: { fillColor: [240, 240, 244], textColor: [17, 17, 20], fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [247, 247, 250] },
+    columnStyles: cs,
+    didParseCell: (d) => { if (d.section !== 'body' && cs[d.column.index] && cs[d.column.index].halign && !(d.section === 'foot' && d.column.index < 4)) d.cell.styles.halign = cs[d.column.index].halign; }
+  });
+  const n = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= n; i++) {
+    doc.setPage(i); doc.setFont('helvetica', 'normal'); doc.setFontSize(8); doc.setTextColor(150, 150, 158);
+    doc.text(`Snkr Dealer Current Stock · ${dateStr}`, mx, H - 7);
+    doc.text(`Page ${i} of ${n}`, W - mx, H - 7, { align: 'right' });
+  }
+  return { blob: doc.output('blob'), name: `Snkr Dealer Current Stock - ${ymd(now)}${withPrices ? ' (with prices)' : ''}.pdf`, pages: n };
+}
+async function saveStockPdf(withPrices, logo) {
+  const { blob, name, pages } = buildStockPdf(withPrices, logo);
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (ios && navigator.canShare) {
+    const file = new File([blob], name, { type: 'application/pdf' });
+    if (navigator.canShare({ files: [file] })) {
+      try { await navigator.share({ files: [file] }); return 'Stock PDF ready'; }
+      catch (e) { if (e && e.name === 'AbortError') return 'Cancelled'; }
+    }
+  }
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  return `Stock PDF downloaded · ${plural(pages, 'page')}`;
 }
 
 /* ---------- Settings ---------- */

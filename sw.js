@@ -9,9 +9,9 @@
  *     page switches over quietly the next time the app goes to the background.
  *   • Sheet data (Apps Script) is never cached — the app keeps its own copy for offline.
  */
-const VERSION = '2026.09.30-1';
+const VERSION = '2026.10.06-1';
 const CACHE = `snkrdealer-${VERSION}`;
-const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './logo.png'];
+const SHELL = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './logo.png', './jspdf.umd.min.js', './jspdf.autotable.min.js'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
